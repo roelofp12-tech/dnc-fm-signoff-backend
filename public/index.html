@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>FM sign-off test</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;margin:0;background:#f4f5f7;color:#1b1f24;line-height:1.5}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:8px 0 2px}h2{font-size:16px;margin:0 0 10px}
+.sub{color:#5b6470;font-size:13px;margin:0 0 14px}
+.card{background:#fff;border:1px solid #dfe3e8;border-radius:12px;padding:16px;margin-bottom:14px}
+label{display:block;font-size:13px;color:#5b6470;margin:10px 0 4px}
+input,select,textarea{width:100%;font:inherit;padding:9px 10px;border:1px solid #c8ced6;border-radius:8px;background:#fff}
+textarea{min-height:60px}
+button,a.btn{font:inherit;padding:10px 14px;border-radius:8px;border:1px solid #1b1f24;background:#1b1f24;color:#fff;cursor:pointer;text-decoration:none;display:inline-block}
+button.sec,a.btn.sec{background:#fff;color:#1b1f24;border-color:#c8ced6}
+a.wa{background:#1f8f4e;border-color:#1f8f4e}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chips label{display:flex;align-items:center;gap:6px;margin:0;color:#1b1f24;font-size:14px;border:1px solid #c8ced6;border-radius:8px;padding:8px 10px}
+.chips input{width:auto}
+.pill{font-size:12px;padding:2px 10px;border-radius:999px}
+.p{background:#fdf1d8;color:#7a5200}.s{background:#dff3e6;color:#16623a}
+.item{border-top:1px solid #e8ebef;padding:12px 0}
+.item:first-child{border-top:0}
+.err{color:#b3261e;font-size:13px;min-height:18px;margin:8px 0 0}
+.small{font-size:12px;color:#5b6470}
+</style>
+</head>
+<body>
+<main>
+<h1>FM sign-off test</h1>
+<p class="sub">Separate test site. Nothing here touches the live FM Suite.</p>
+
+<div class="card">
+<h2>1. Form to send</h2>
+<label for="ft">Form type</label>
+<select id="ft"></select>
+<div id="fields"></div>
+<h2 style="margin-top:16px">2. Who signs</h2>
+<div class="chips" id="ap">
+<label><input type="checkbox" value="roelof" checked> Test: me (Roelof)</label>
+<label><input type="checkbox" value="mbonisi"> Mbonisi Ngcofe</label>
+<label><input type="checkbox" value="mandisa"> Mandisa Jozi</label>
+</div>
+<p class="small" style="margin:8px 0 0">Tick both Mbonisi and Mandisa to send to both. The first to sign closes it.</p>
+<label for="other">Or send to a different number (optional, replaces the ticked people)</label>
+<input id="other" placeholder="e.g. 073 764 0256" inputmode="tel">
+<p class="err" id="err"></p>
+<button id="go">Create sign-off request</button>
+</div>
+
+<div class="card" id="sent" hidden>
+<h2>3. Send via WhatsApp</h2>
+<p class="small" style="margin:0 0 6px">Each button opens WhatsApp with the message ready. Tap Send there.</p>
+<div id="links"></div>
+</div>
+
+<div class="card">
+<h2>Requests</h2>
+<div id="list" class="small">Loading…</div>
+<div class="row"><button class="sec" id="rf">Refresh</button></div>
+</div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="/common.js"></script>
+<script>
+var NUMBERS={roelof:'27737640256',mbonisi:'27776004990',mandisa:'27837558355'};
+var NAMES={roelof:'Roelof',mbonisi:'Mbonisi',mandisa:'Mandisa'};
+var FORMS={
+ dailycheck:{label:'Daily Check',fields:[['Date','2026-11-24'],['Inspector','Brad Ayrton'],['Items checked','42'],['Working','39'],['Faults','3'],['Notes','Aircon 2F North noisy; blind stuck in Common 1F; light out on Balcony.']]},
+ contractor:{label:'Contractor On-Site',fields:[['Date','2026-11-24'],['Company','Dynamic Cleaning'],['Tasks','Deep clean of 1F kitchen and bathrooms'],['Start','08:00'],['End','12:30']]},
+ callout:{label:'Callout',fields:[['Date','2026-11-24'],['Company called out','ABC Plumbing'],['Reason','Burst pipe in 2F bathroom'],['Start','09:15'],['End','11:00'],['Status','Completed'],['Responsible party','Landlord']]},
+ reactive:{label:'Reactive Maintenance',fields:[['Date','2026-11-24'],['Location','1F North'],['Issue','Ceiling tile stained and loose'],['Action taken','Tile replaced'],['Time','14:20'],['Status','Completed']]}
+};
+var ft=document.getElementById('ft');
+Object.keys(FORMS).forEach(function(k){var o=document.createElement('option');o.value=k;o.textContent=FORMS[k].label;ft.appendChild(o);});
+ft.value='callout';
+function draw(){var box=document.getElementById('fields');box.textContent='';
+ FORMS[ft.value].fields.forEach(function(f,i){
+  var l=document.createElement('label');l.textContent=f[0];
+  var el=document.createElement(f[1].length>40?'textarea':'input');el.value=f[1];el.dataset.i=i;
+  box.appendChild(l);box.appendChild(el);});}
+ft.onchange=draw;draw();
+
+function key(){var k=localStorage.getItem('fmk');if(!k){k=prompt('Enter the access key');if(k)localStorage.setItem('fmk',k);}return k||'';}
+function api(path,opts){opts=opts||{};opts.headers=Object.assign({'x-fm-key':key()},opts.headers||{});return fetch('/api/'+path,opts).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||'Request failed');return j;});});}
+
+function waLink(key,rec){
+ var a=rec.approvers[key];
+ var link=location.origin+'/sign/'+a.token;
+ var msg='Hi '+NAMES[key]+', the '+rec.formLabel+' dated '+((rec.fields.find(function(f){return f[0]==='Date'})||[])[1]||'today')+' needs your sign-off. Open the link, sign with your finger and tap Approve:\n'+link;
+ var num=(rec.override||'')||NUMBERS[key];
+ return 'https://wa.me/'+num+'?text='+encodeURIComponent(msg);
+}
+function showLinks(rec){
+ var box=document.getElementById('links');box.textContent='';
+ Object.keys(rec.approvers).forEach(function(k){
+  var a=document.createElement('a');a.className='btn wa';a.target='_blank';a.rel='noopener';
+  a.href=waLink(k,rec);a.textContent='WhatsApp '+rec.approvers[k].name;
+  var w=document.createElement('div');w.className='row';w.appendChild(a);box.appendChild(w);});
+ document.getElementById('sent').hidden=false;
+}
+document.getElementById('go').onclick=function(){
+ var err=document.getElementById('err');err.textContent='';
+ var ap=[].slice.call(document.querySelectorAll('#ap input:checked')).map(function(i){return i.value;});
+ if(!ap.length){err.textContent='Choose who signs first';return;}
+ var fields=FORMS[ft.value].fields.map(function(f,i){return [f[0],document.querySelector('#fields [data-i="'+i+'"]').value];});
+ api('requests',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({formType:ft.value,fields:fields,approvers:ap,createdBy:'Roelof Paul'})})
+ .then(function(rec){var o=document.getElementById('other').value.replace(/\D/g,'');if(o){if(o[0]==='0')o='27'+o.slice(1);rec.override=o;}showLinks(rec);load();}).catch(function(e){err.textContent=e.message;});
+};
+
+function load(){
+ api('requests').then(function(all){
+  var box=document.getElementById('list');box.textContent='';
+  if(!all.length){box.textContent='No requests yet.';return;}
+  all.forEach(function(r){
+   var d=document.createElement('div');d.className='item';
+   var t=document.createElement('div');t.style.fontWeight='500';t.style.color='#1b1f24';t.textContent=r.formLabel+' · '+r.id;
+   var p=document.createElement('span');p.className='pill '+(r.status==='signed'?'s':'p');p.textContent=r.status==='signed'?'Signed':'Pending sign-off';p.style.marginLeft='8px';t.appendChild(p);
+   var m=document.createElement('div');
+   m.textContent='Sent to '+Object.keys(r.approvers).map(function(k){return r.approvers[k].name}).join(', ')+' · '+fmt(r.createdAt);
+   d.appendChild(t);d.appendChild(m);
+   if(r.signed){var s=document.createElement('div');s.textContent='Signed by '+r.signed.name+' on '+fmt(r.signed.at);d.appendChild(s);
+    var row=document.createElement('div');row.className='row';
+    var b=document.createElement('button');b.textContent='Download signed PDF';
+    var lk=document.createElement('a');lk.className='btn sec';lk.hidden=true;lk.target='_blank';
+    b.onclick=function(){savePdf(r,lk);};row.appendChild(b);row.appendChild(lk);d.appendChild(row);}
+   else{var row2=document.createElement('div');row2.className='row';
+    Object.keys(r.approvers).forEach(function(k){var a=document.createElement('a');a.className='btn sec';a.target='_blank';a.rel='noopener';a.href=waLink(k,r);a.textContent='Resend to '+NAMES[k];row2.appendChild(a);});
+    d.appendChild(row2);}
+   box.appendChild(d);});
+ }).catch(function(e){document.getElementById('list').textContent=e.message;});
+}
+document.getElementById('rf').onclick=load;load();setInterval(load,20000);
+</script>
+</body>
+</html>
